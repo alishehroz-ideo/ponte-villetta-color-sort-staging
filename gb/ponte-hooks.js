@@ -10,7 +10,8 @@
  *  - the all-clear voucher (stage 1000, status from the server) inside their クリア！ dialog, whose button closes the
  *    game into the GameBull app's coupon (gamebull:close + to: /coupons/<id>, relayed by the loading page; trap W18);
  *  - a "back to GameBull" button under their START when the game cannot start (Game Start launch, no launch data);
- *  - the loading page signal once their pictures are loaded, and audioSession "playback" on the first tap (trap W2).
+ *  - the loading page signal once their pictures are loaded, and audioSession "playback" on the first tap (trap W2);
+ *  - the fit to the GameBull window (no scrolling, full width; QA builds 4-5): see PonteFit below.
  */
 (function () {
   const ENV = window.PONTE_GB || {};
@@ -29,7 +30,7 @@
   /* ── styles for the few GameBull elements (scoped to .pvgb-*, trap W10; colours from their lounge.css) ── */
   const css = document.createElement('style');
   css.textContent = `
-  .pvgb-timer{display:block;width:max-content;margin:8px auto 0;padding:3px 12px;border:1px solid #b886415e;border-radius:999px;
+  .pvgb-timer{position:absolute;left:50%;transform:translateX(-50%);z-index:6;width:max-content;margin:0;padding:2px 12px;border:1px solid #b886415e;border-radius:999px;
     background:#090d13b8;color:#f5dcac;font:600 12px/1.5 system-ui,sans-serif;letter-spacing:1px;font-variant-numeric:tabular-nums}
   .pvgb-timer[hidden]{display:none}
   .pvgb-timer.pvgb-low{border-color:#e0705a;color:#ffb4a2}
@@ -40,16 +41,84 @@
   .pvgb-reward img{display:block;max-width:100%;max-height:140px;margin:8px auto;border-radius:6px}
   .pvgb-reward button{margin-top:8px}
   .pvgb-back{display:block;margin:10px auto 6px}
-  /* fixed window: the loading page scales this frame so their whole page fits (loader.ts fitFrame); no scrollbar */
+  /* fixed window: PonteFit fits their page to the window (scale 1); no scrollbar */
   html{overflow:hidden;scrollbar-width:none}
   html::-webkit-scrollbar{display:none}`;
   document.head.appendChild(css);
+
+  /* ── fit to the GameBull window: no scrolling, full width, at scale 1 ──────────────────────────────────────────
+   * Their page is a 430 px phone column (their lounge.css "Mobile portrait game frame on every screen":
+   * body{max-width:430px;margin:0 auto}) and a scrolling document: a 170 px header, their stats, then bottles sized
+   * from the board's width (.bottle{width:100%;aspect-ratio:.56} in a 3- or 4-column grid), up to 4 rows. Scaling
+   * the whole page down (builds 3-4) laid it out wider than 430 px in the short GameBull window, so their column
+   * showed narrow between dark sides (QA). Instead their page stays at the phone's width and only layout is set,
+   * by one stylesheet of ours (their files unchanged), recomputed after every render / screen change / resize:
+   *  - board: the column count that gives the biggest bottles in the height left under their stats (their own
+   *    count when it is as good), never bigger than their largest bottle (3 columns); the 14-bottle board becomes
+   *    7 x 2 in a short window instead of 4 tiny rows. Their pours use the bottles' own boxes, so they follow;
+   *  - TOP: when it is taller than the window, only their hero hookah block (.home-display) gets shorter;
+   *  - the timer line floats in the gap above the board, so the board never moves when it appears.
+   * The loading page (loader.ts) scales the frame only if something still cannot fit (e.g. a short landscape). */
+  const fitStyle = document.createElement('style'); fitStyle.id = 'pvgb-fit'; document.head.appendChild(fitStyle);
+  const board = $('board'), home = $('home');
+  const visible = el => !!el && el.getClientRects().length > 0;
+  function fitTop() {
+    let rule = '';
+    if (document.body.classList.contains('home-open')) {
+      fitStyle.textContent = '';
+      const disp = home.querySelector('.home-display'), over = home.offsetHeight - innerHeight;
+      if (disp && over > 0.5) {
+        const h = disp.offsetHeight, nh = Math.max(60, Math.floor(h - over));
+        rule = `.home-display{height:${nh}px!important}.hero-hookah{transform:scale(${(nh / h).toFixed(3)})}`;
+      }
+    }
+    return rule;
+  }
+  function fitBoard() {
+    const n = board.children.length;
+    if (!n || !visible(board)) return '';
+    fitStyle.textContent = '';                                   // their own layout first, then measure it
+    const theirCols = Math.max(1, parseInt(board.style.getPropertyValue('--columns'), 10) || 4);
+    const first = board.children[0], ratio = first.offsetWidth / first.offsetHeight;
+    const margin = parseFloat(getComputedStyle(first).marginBottom) || 0, gap = parseFloat(getComputedStyle(board).rowGap) || 0;
+    // Room under the board for what follows it in their page (their #message line and its margins), measured in
+    // their own layout, so the board never pushes it below the window.
+    const msg = $('message'), boardBox = board.getBoundingClientRect();
+    const below = visible(msg) ? Math.max(0, msg.getBoundingClientRect().bottom + (parseFloat(getComputedStyle(msg).marginBottom) || 0) - boardBox.bottom) : 0;
+    const width = board.clientWidth, height = innerHeight - boardBox.top - below - 4;
+    const biggest = width / Math.min(3, Math.max(theirCols, 3));
+    const size = c => { const rows = Math.ceil(n / c); return Math.min(width / c, ((height - (rows - 1) * gap) / rows - margin) * ratio, biggest); };
+    let cols = theirCols, best = size(theirCols);
+    for (let c = 1; c <= n; c++) { const w = size(c); if (w > best + 0.5) { best = w; cols = c; } }
+    best = Math.max(20, Math.floor(best));
+    return `#board{grid-template-columns:repeat(${cols},minmax(0,1fr))!important;max-width:${cols * best}px!important}`;
+  }
+  function fitTimer() {
+    const stats = document.querySelector('main .stats');
+    return visible(stats) ? `.pvgb-timer{top:${stats.offsetTop + stats.offsetHeight + 3}px}` : '';
+  }
+  let lastFit = '';
+  function PonteFit() {
+    const rule = fitTop() + fitBoard() + fitTimer();
+    fitStyle.textContent = rule;
+    if (rule === lastFit) return;
+    lastFit = rule;
+    const m = /repeat\((\d+)[^]*?max-width:(\d+)/.exec(rule);
+    log(`Fit ${innerWidth}x${innerHeight}: ${m ? `board ${m[1]} columns, ${m[2]} px wide` : 'their layout'}${/home-display/.test(rule) ? ', TOP hero shortened' : ''}.`);
+  }
+  window.PonteFit = PonteFit;                                    // also called by loader.ts before it measures
+  addEventListener('resize', PonteFit);
+  const theirEnterGame = enterGame;
+  enterGame = function () { theirEnterGame.apply(this, arguments); PonteFit(); };
+  const theirShowHome = showHome;
+  showHome = function () { theirShowHome.apply(this, arguments); PonteFit(); };
 
   /* ── board save: after their render, the attempt's moves (their trace) go to the host ── */
   let restoring = false;
   const theirRender = render;
   render = function () {
     theirRender.apply(this, arguments);
+    PonteFit();
     if (!restoring && playing && gb()) gb().saveMoves(trace);
   };
 
