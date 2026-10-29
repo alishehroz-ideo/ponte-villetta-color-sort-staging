@@ -1,0 +1,7 @@
+function solve(input,limit=100000){const palette=[...new Set(input.flat())],s=input.map(b=>b.map(c=>palette.indexOf(c)));let count=0;const seen=new Set();
+ function dfs(s){if(++count>limit)return null;if(s.every(b=>!b.length||b.length===4&&b.every(c=>c===b[0])))return [];const key=s.map(b=>b.join(',')).sort().join('|');if(seen.has(key))return false;seen.add(key);let choices=[];
+ for(let i=0;i<s.length;i++){const a=s[i];if(!a.length||a.length===4&&a.every(c=>c===a[0]))continue;let run=1;while(run<a.length&&a.at(-1-run)===a.at(-1))run++;let empty=false;for(let j=0;j<s.length;j++){const b=s[j];if(i===j||b.length===4||b.length&&b.at(-1)!==a.at(-1))continue;if(!b.length){if(empty||run===a.length)continue;empty=true}const n=Math.min(run,4-b.length);choices.push({i,j,n,score:(b.length?10:0)+(n===a.length?4:0)+(b.length+n===4?10:0)})}}
+ choices.sort((a,b)=>b.score-a.score);for(const {i,j,n} of choices){let v=s.map(b=>b.slice());v[j].push(...v[i].splice(v[i].length-n,n));const r=dfs(v);if(r)return [[i,j,n],...r];if(r===null)return null}return false}
+ const path=dfs(s);return {status:path?'solved':path===null?'limit':'impossible',visited:count,path}}
+
+self.onmessage=e=>{const r=solve(e.data.bottles,200000);self.postMessage({id:e.data.id,status:r.status})};
