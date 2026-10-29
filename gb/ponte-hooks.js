@@ -39,7 +39,10 @@
   .pvgb-reward p{margin:4px 0;font-size:13px}
   .pvgb-reward img{display:block;max-width:100%;max-height:140px;margin:8px auto;border-radius:6px}
   .pvgb-reward button{margin-top:8px}
-  .pvgb-back{display:block;margin:10px auto 6px}`;
+  .pvgb-back{display:block;margin:10px auto 6px}
+  /* fixed window: the loading page scales this frame so their whole page fits (loader.ts fitFrame); no scrollbar */
+  html{overflow:hidden;scrollbar-width:none}
+  html::-webkit-scrollbar{display:none}`;
   document.head.appendChild(css);
 
   /* ── board save: after their render, the attempt's moves (their trace) go to the host ── */
