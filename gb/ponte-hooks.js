@@ -41,6 +41,8 @@
   .pvgb-reward img{display:block;max-width:100%;max-height:140px;margin:8px auto;border-radius:6px}
   .pvgb-reward button{margin-top:8px}
   .pvgb-back{display:block;margin:10px auto 6px}
+  .pvgb-reason{margin:0 0 6px;color:#f5dcac;font-size:14px}
+  .pvgb-reason[hidden]{display:none}
   /* fixed window: PonteFit fits their page to the window (scale 1); no scrollbar */
   html{overflow:hidden;scrollbar-width:none}
   html::-webkit-scrollbar{display:none}`;
@@ -151,9 +153,26 @@
     log(`Stage ${current + 1}: attempt time limit reached; ending it.`);
     stopDeadlockCheck(); playing = false; clearCelebration();
     $('gameover-result').textContent = '制限時間を過ぎました。';
+    showReason('制限時間を過ぎました。');
     if (!$('gameover').open) $('gameover').showModal();
     endParticipation();
   }
+
+  /* ── why the attempt ended, kept on their GAME OVER dialog ──
+   * Their showGameOver writes the reason (「これ以上クリアできる手順がありません。」 = their dead-end check, a proven
+   * unsolvable board) into #gameover-result, then their endParticipation replaces it with 「この参加は終了しました…」
+   * once the end is confirmed, so the player saw "ended" with no reason while moves were still on screen (QA live test,
+   * level 13). The reason stays on a line of its own above their text, in their own words. */
+  const reason = document.createElement('p'); reason.className = 'pvgb-reason'; reason.hidden = true;
+  const overText = $('gameover-result'); if (overText) overText.before(reason);
+  function showReason(text) { reason.textContent = text; reason.hidden = false; }
+  const theirShowGameOver = showGameOver;
+  showGameOver = function () {
+    const was = playing && !won();
+    theirShowGameOver.apply(this, arguments);
+    if (was && $('gameover').open) { showReason($('gameover-result').textContent); log(`Stage ${current + 1}: dead end (their check), attempt ended.`); }
+  };
+  $('gameover').addEventListener('close', () => { reason.hidden = true; });
   setInterval(() => {
     const a = gb() && gb().active;
     const on = !!(a && playing && !a.clearBody && participation.attempt && participation.attempt.attemptId === a.attemptId && !won());
