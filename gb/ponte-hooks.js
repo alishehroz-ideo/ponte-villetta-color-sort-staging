@@ -7,7 +7,7 @@
  *    for this: no rewind to the initial position on a reload);
  *  - the attempt's time limit (GameBull requires one, at most 59 min): a small line under their stats in the last
  *    10 minutes; at 0 the attempt ends through their own GAME OVER dialog and endParticipation();
- *  - the all-clear voucher (stage 1000, status from the server) inside their クリア！ dialog, whose button closes the
+ *  - the all-clear voucher (last stage, status from the server) inside their クリア！ dialog, whose button closes the
  *    game into the GameBull app's coupon (gamebull:close + to: /coupons/<id>, relayed by the loading page; trap W18);
  *  - a "back to GameBull" button under their START when the game cannot start (Game Start launch, no launch data);
  *  - the loading page signal once their pictures are loaded, and audioSession "playback" on the first tap (trap W2);
@@ -212,7 +212,7 @@
   });
 
   /* ── start-up check: a launch that cannot play says so under their START, with a way back to GameBull ── */
-  participation.progress().then(p => log(`Progress ${p.completedStages} / 1000.`)).catch(e => {
+  participation.progress().then(p => log(`Progress ${p.completedStages} / ${ENV.totalStages}.`)).catch(e => {
     log('Start-up message: ' + e.message);
     if (!$('home-error').textContent) $('home-error').textContent = e.message;
     if (gb().embedded && !document.querySelector('.pvgb-back') && e.code !== 'network') {

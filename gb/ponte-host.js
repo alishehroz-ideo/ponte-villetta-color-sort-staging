@@ -22,24 +22,31 @@
  *  - move proof: GameBull does not replay moves. Their move list is replayed here before a clear is reported
  *    (not authoritative: it runs in the browser);
  *  - board save on reload: kept with the attempt in sessionStorage (gb/ponte-hooks.js restores it);
- *  - stage data version pinning: the server does not know it; the admin must be set to 1000 stages (checked);
+ *  - stage data version pinning: the server does not know it; the admin stage count must equal this build's
+ *    (ENV.totalStages: their levels.js without its repeated boards, 851; checked);
  *  - deadlineAt: GameBull requires a time per attempt (maxAttemptSeconds, max 3540 s); gb/ponte-hooks.js shows it
  *    near the end and closes the attempt when it runs out.
  * Lives are never counted here: the balance is the server's (/context lives.count).
  */
 (function () {
   const ENV = window.PONTE_GB || {};
-  const TOTAL = 1000; // their game: gamebull.js and game.js hard-code 1,000 stages
+  // Stage count of this build: their levels.js with its 149 repeated boards removed (vite.gamebull.config.ts; their
+  // gamebull.js / game.js 1000s are set to the same number there).
+  const TOTAL = ENV.totalStages;
+  const COUNT = TOTAL.toLocaleString('en-US');
   const log = (...a) => console.log('[PV-GB]', ...a);
   const q = new URLSearchParams(location.search);
   // The GameBull app launches with ?tenantSlug&bootToken&gameId&returnUrl&apiBase (use-launch-game.ts); the other
   // ports' SDK also accepts sessionToken / token, in that order (playbook section 2).
   const token = q.get('bootToken') || q.get('sessionToken') || q.get('token') || '';
   const tenant = q.get('tenantSlug') || '';
+  // The GameBull app launches with ?gameId=<the id registered in the admin> (use-launch-game.ts), as the loading
+  // page reads it; the build's id is the fallback.
+  const gameId = q.get('gameId') || ENV.gameId;
   const api = ((ENV.dev && q.get('devApi')) || ENV.apiBase || '').replace(/\/+$/, '');
   const jwtPayload = t => { try { return JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))); } catch { return null; } };
   const player = (jwtPayload(token) || {}).globalUserId || 'unknown';
-  const KEY = 'ponte-gb:v1:' + tenant + ':' + ENV.gameId + ':' + player;
+  const KEY = 'ponte-gb:v1:' + tenant + ':' + gameId + ':' + player;
 
   class StageError extends Error { constructor(code, message) { super(message); this.name = 'StageError'; this.code = code; } }
   // Server codes -> Japanese for their message line (#home-error / #result). Their own wording where they have one
@@ -48,7 +55,7 @@
     'play.no_lives': 'ライフが不足しています。GameBullでライフをご確認ください。',
     'stage.daily_limit_reached': '本日の挑戦回数の上限に達しました。進行状況はGameBullに保存されています。',
     'stage.stage_not_playable': 'このステージはまだプレイできません。TOPから参加し直してください。',
-    'stage.all_cleared': '全1,000ステージ達成。特典はGameBullでご確認ください。',
+    'stage.all_cleared': '全' + COUNT + 'ステージ達成。特典はGameBullでご確認ください。',
     'stage.stage_required': 'ステージ番号の送信に問題があります。開発者へお問い合わせください。',
     'stage.play_token_required': '参加情報を確認できません。開発者へお問い合わせください。',
     'play.session_token_expired': '参加の有効期限が切れました。TOPから参加し直してください。',
@@ -95,12 +102,12 @@
   async function refresh() {
     if (!api) throw fail('not_configured', 'GameBullの接続先が未設定です。開発者に接続設定を依頼してください。');
     if (!token || !tenant) throw fail('launch_required', 'GameBull接続待ちです。GameBullから起動してください。');
-    const data = await request('/play/games/' + encodeURIComponent(ENV.gameId) + '/context?tenantSlug=' + encodeURIComponent(tenant), { bearer: token });
+    const data = await request('/play/games/' + encodeURIComponent(gameId) + '/context?tenantSlug=' + encodeURIComponent(tenant), { bearer: token });
     const m = data.stageMode;
     // stageMode is sent only for a "Play Stage Mode" launch (boot token mode STAGE_CLEAR); "Game Start" gets null.
     if (!m) throw fail('stage_mode_required', 'このゲームはステージモードで遊べます。GameBullのゲーム画面の「Play Stage Mode」から開いてください。');
     const h = m.highestCleared;
-    if (m.totalStages !== TOTAL) throw fail('bad_context', 'GameBullのステージ数が1,000ではありません（' + m.totalStages + '）。管理者に確認してください。');
+    if (m.totalStages !== TOTAL) throw fail('bad_context', 'GameBullのステージ数が' + COUNT + 'ではありません（' + m.totalStages + '）。管理者に確認してください。');
     if (!Number.isInteger(h) || h < 0 || h > TOTAL || (h >= TOTAL ? m.nextStage !== null : m.nextStage !== h + 1) || !(m.maxAttemptSeconds > 0))
       throw fail('bad_context', 'ステージ情報がゲームと一致しません。管理者に確認してください。');
     const first = !ctx;
